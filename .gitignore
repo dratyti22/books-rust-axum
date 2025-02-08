@@ -1,0 +1,9 @@
+#Ide
+/.idea
+/.vscode
+
+#Rust
+/target
+
+#Env
+.env
