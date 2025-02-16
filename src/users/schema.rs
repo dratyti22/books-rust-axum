@@ -22,3 +22,11 @@ pub struct RegisterUserSchema {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct LoginUserSchema {
+    #[validate(email)]
+    pub email: String,
+
+    #[validate(length(min = 8))]
+    pub password: String,
+}
