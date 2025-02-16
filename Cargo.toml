@@ -14,12 +14,15 @@ dotenv = "0.15.0"
 jsonwebtoken = "9.3.1"
 rand_core = { version = "0.9.0", features = ["std"] }
 redis = { version = "0.28.2", features = ["tokio-comp"] }
+rust_decimal = "1.36.0"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
-sqlx = { version = "0.8.3", features = ["runtime-async-std-native-tls", "postgres", "chrono", "uuid"] }
+sqlx = { version = "0.8.3", features = ["runtime-async-std-native-tls", "postgres", "chrono", "uuid", "rust_decimal"] }
+strum = { version = "0.27.0", features = ["derive"] }
 time = "0.3.37"
 tokio = { version = "1.43.0", features = ["full"] }
 tower-http = { version = "0.6.2", features = ["cors", "trace"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 uuid = { version = "1.13.1", features = ["serde", "v4"] }
+validator = { version = "0.20.0", features = ["derive"] }

@@ -1,5 +1,6 @@
 mod route;
 mod settings;
+mod users;
 
 use crate::route::init_router;
 use crate::settings::Settings;
@@ -9,6 +10,7 @@ use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
+use redis::Client;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, info_span};
@@ -17,6 +19,7 @@ use tracing::{error, info, info_span};
 pub struct AppState {
     db: Pool<Postgres>,
     env: Settings,
+    redis: Client,
 }
 
 #[tokio::main]
@@ -40,6 +43,7 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    let redis_client = Client::open(&*settings.redis_url).unwrap();
 
     let cors = CorsLayer::new()
         .allow_origin("http://localhost:8000".parse::<HeaderValue>().unwrap())
@@ -56,6 +60,7 @@ async fn main() {
     let app = init_router(Arc::new(AppState {
         db: pool.clone(),
         env: settings.clone(),
+        redis: redis_client.clone(),
     }))
     .layer(cors);
 
