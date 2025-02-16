@@ -18,7 +18,7 @@ pub enum UserRole {
     Seller,
 }
 
-#[derive(Debug, Clone, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: uuid::Uuid,
     pub first_name: String,

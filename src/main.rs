@@ -1,6 +1,7 @@
 mod route;
 mod settings;
 mod users;
+mod middleware;
 
 use crate::route::init_router;
 use crate::settings::Settings;

@@ -1,7 +1,8 @@
+use crate::middleware::jwt_auth::JWTAuthMiddleware;
 use crate::users::model::{User, UserRole};
 use crate::users::response::{ErrorResponse, UserResponse};
 use crate::users::schema::{LoginUserSchema, RegisterUserSchema};
-use crate::users::token::{generate_jwt_token, TokenDetails};
+use crate::users::token::{generate_jwt_token, verify_jwt_token, TokenDetails};
 use crate::AppState;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
@@ -9,13 +10,13 @@ use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::extract::State;
 use axum::http::{header, HeaderMap, Response, StatusCode};
 use axum::response::IntoResponse;
-use axum::Json;
+use axum::{Extension, Json};
 use axum_extra::extract::cookie::{Cookie, SameSite};
+use axum_extra::extract::CookieJar;
 use redis::AsyncCommands;
 use serde_json::json;
 use std::sync::Arc;
 use validator::Validate;
-
 pub async fn register_user_handler(
     State(data): State<Arc<AppState>>,
     Json(body): Json<RegisterUserSchema>,
@@ -75,15 +76,15 @@ pub async fn register_user_handler(
         body.email,
         hashed_password
     )
-    .fetch_one(&data.db)
-    .await
-    .map_err(|e| {
-        let error_response = ErrorResponse{
-            data: None,
-            message: format!("Database error: {}", e)
-        };
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
-    })?;
+        .fetch_one(&data.db)
+        .await
+        .map_err(|e| {
+            let error_response = ErrorResponse {
+                data: None,
+                message: format!("Database error: {}", e),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
+        })?;
 
     let response = json!({
         "data": json!({"user": UserResponse::new(&user)}),
@@ -128,22 +129,22 @@ pub async fn login_user_handler(
         "#,
         body.email
     )
-    .fetch_optional(&data.db)
-    .await
-    .map_err(|e| {
-        let error_response = ErrorResponse {
-            data: Some(format!("Database error: {}", e)),
-            message: "Request failed".to_string(),
-        };
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
-    })?
-    .ok_or_else(|| {
-        let error_response = ErrorResponse {
-            data: None,
-            message: "Password hashing failed".to_string(),
-        };
-        (StatusCode::BAD_REQUEST, Json(error_response))
-    })?;
+        .fetch_optional(&data.db)
+        .await
+        .map_err(|e| {
+            let error_response = ErrorResponse {
+                data: Some(format!("Database error: {}", e)),
+                message: "Request failed".to_string(),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
+        })?
+        .ok_or_else(|| {
+            let error_response = ErrorResponse {
+                data: None,
+                message: "Password hashing failed".to_string(),
+            };
+            (StatusCode::BAD_REQUEST, Json(error_response))
+        })?;
 
     let valid_password = match PasswordHash::new(&user.password) {
         Ok(hash) => Argon2::default()
@@ -177,25 +178,25 @@ pub async fn login_user_handler(
         &refresh_token_details,
         data.env.refresh_token_max_age,
     )
-    .await?;
+        .await?;
 
     let access_cookie = Cookie::build((
         "access_token",
         access_token_details.token.clone().unwrap_or_default(),
     ))
-    .path("/")
-    .max_age(time::Duration::days(data.env.access_token_max_age))
-    .same_site(SameSite::Lax)
-    .http_only(true);
+        .path("/")
+        .max_age(time::Duration::days(data.env.access_token_max_age))
+        .same_site(SameSite::Lax)
+        .http_only(true);
 
     let refresh_cookie = Cookie::build((
         "refresh_token",
         refresh_token_details.token.unwrap_or_default(),
     ))
-    .path("/")
-    .max_age(time::Duration::minutes(data.env.refresh_token_max_age * 60))
-    .same_site(SameSite::Lax)
-    .http_only(true);
+        .path("/")
+        .max_age(time::Duration::minutes(data.env.refresh_token_max_age * 60))
+        .same_site(SameSite::Lax)
+        .http_only(true);
 
     let logged_in_cookie = Cookie::build(("logged_in", "true"))
         .path("/")
@@ -224,6 +225,104 @@ pub async fn login_user_handler(
     response.headers_mut().extend(headers);
     Ok(response)
 }
+
+
+pub async fn logout_user_handler(
+    cookie_jar: CookieJar,
+    Extension(auth_guard): Extension<JWTAuthMiddleware>,
+    State(data): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let message = "Token is invalid or session has expired".to_string();
+
+    let refresh_token = cookie_jar
+        .get("refresh_token")
+        .map(|cookie| cookie.value().to_string())
+        .ok_or_else(|| {
+            let error_response = ErrorResponse {
+                data: None,
+                message: message,
+            };
+            (StatusCode::FORBIDDEN, Json(error_response))
+        })?;
+
+    let refresh_token_details =
+        match verify_jwt_token(data.env.refresh_token_public_key.to_owned(), &refresh_token)
+        {
+            Ok(token_details) => token_details,
+            Err(e) => {
+                let error_response = ErrorResponse {
+                    data: None,
+                    message: format!("{:?}", e),
+                };
+                return Err((StatusCode::UNAUTHORIZED, Json(error_response)));
+            }
+        };
+
+    let mut redis_client = data
+        .redis
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|e| {
+            let error_response = ErrorResponse {
+                data: None,
+                message: format!("Redis error: {}", e),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
+        })?;
+
+    redis_client
+        .del(&[
+            refresh_token_details.token_uuid.to_string(),
+            auth_guard.accesses_token_uuid.to_string(),
+        ])
+        .await
+        .map_err(|e| {
+            let error_response = ErrorResponse {
+                data: None,
+                message: format!("{:?}", e),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
+        })?;
+
+    let access_cookie = Cookie::build(("access_token", ""))
+        .path("/")
+        .max_age(time::Duration::minutes(-1))
+        .same_site(SameSite::Lax)
+        .http_only(true);
+    let refresh_cookie = Cookie::build(("refresh_token", ""))
+        .path("/")
+        .max_age(time::Duration::minutes(-1))
+        .same_site(SameSite::Lax)
+        .http_only(true);
+
+    let logged_in_cookie = Cookie::build(("logged_in", "true"))
+        .path("/")
+        .max_age(time::Duration::minutes(-1))
+        .same_site(SameSite::Lax)
+        .http_only(false);
+
+    let mut headers = HeaderMap::new();
+    headers.append(
+        header::SET_COOKIE,
+        access_cookie.to_string().parse().unwrap(),
+    );
+    headers.append(
+        header::SET_COOKIE,
+        refresh_cookie.to_string().parse().unwrap(),
+    );
+    headers.append(
+        header::SET_COOKIE,
+        logged_in_cookie.to_string().parse().unwrap(),
+    );
+
+    let mut response = Response::new(json!({"status": "success"}).to_string());
+    response.headers_mut().extend(headers);
+    Ok(response)
+}
+
+
+
+
 
 fn generate_token(
     user_id: uuid::Uuid,
