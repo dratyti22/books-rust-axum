@@ -15,6 +15,7 @@ CREATE TABLE
         middle_name VARCHAR(100),
         age INT NOT NULL CHECK (age >= 0 AND age <= 150),
         email VARCHAR(255) NOT NULL UNIQUE,
+        biography TEXT,
         file VARCHAR NOT NULL DEFAULT 'uploads/photo-user/default.png',
         verified BOOLEAN NOT NULL DEFAULT FALSE,
         password VARCHAR(100) NOT NULL,

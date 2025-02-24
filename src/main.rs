@@ -2,6 +2,7 @@ mod route;
 mod settings;
 mod users;
 mod middleware;
+mod books;
 
 use crate::route::init_router;
 use crate::settings::Settings;
