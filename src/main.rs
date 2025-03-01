@@ -14,8 +14,7 @@ use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use redis::Client;
 use tower_http::cors::CorsLayer;
-use tower_http::trace::TraceLayer;
-use tracing::{error, info, info_span};
+use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -66,7 +65,7 @@ async fn main() {
     }))
     .layer(cors);
 
-    let listener = tokio::net::TcpListener::bind("localhost:8000")
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000")
         .await
         .unwrap();
     info!("🚀 Server started at {}", listener.local_addr().unwrap());

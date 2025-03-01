@@ -17,6 +17,7 @@ use redis::AsyncCommands;
 use serde_json::json;
 use std::sync::Arc;
 use validator::Validate;
+
 pub async fn register_user_handler(
     State(data): State<Arc<AppState>>,
     Json(body): Json<RegisterUserSchema>,
@@ -67,7 +68,7 @@ pub async fn register_user_handler(
         r#"
         INSERT INTO users (first_name, last_name, middle_name, age, email, password)
         VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, first_name, last_name, middle_name, age, email, password, file, verified, role as "role: UserRole", balance, rating, created_at, updated_at
+        RETURNING id, first_name, last_name, middle_name, age, email, password, biography, file, verified, role as "role: UserRole", balance, rating, created_at, updated_at
         "#,
         body.first_name,
         body.last_name,
@@ -117,6 +118,7 @@ pub async fn login_user_handler(
         age,
         email,
         password,
+        biography,
         file,
         verified,
         role as "role: UserRole",
@@ -129,22 +131,22 @@ pub async fn login_user_handler(
         "#,
         body.email
     )
-        .fetch_optional(&data.db)
-        .await
-        .map_err(|e| {
-            let error_response = ErrorResponse {
-                data: Some(format!("Database error: {}", e)),
-                message: "Request failed".to_string(),
-            };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
-        })?
-        .ok_or_else(|| {
-            let error_response = ErrorResponse {
-                data: None,
-                message: "Password hashing failed".to_string(),
-            };
-            (StatusCode::BAD_REQUEST, Json(error_response))
-        })?;
+    .fetch_optional(&data.db)
+    .await
+    .map_err(|e| {
+        let error_response = ErrorResponse {
+            data: Some(format!("Database error: {}", e)),
+            message: "Request failed".to_string(),
+        };
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
+    })?
+    .ok_or_else(|| {
+        let error_response = ErrorResponse {
+            data: None,
+            message: "Password hashing failed".to_string(),
+        };
+        (StatusCode::BAD_REQUEST, Json(error_response))
+    })?;
 
     let valid_password = match PasswordHash::new(&user.password) {
         Ok(hash) => Argon2::default()
@@ -178,25 +180,25 @@ pub async fn login_user_handler(
         &refresh_token_details,
         data.env.refresh_token_max_age,
     )
-        .await?;
+    .await?;
 
     let access_cookie = Cookie::build((
         "access_token",
         access_token_details.token.clone().unwrap_or_default(),
     ))
-        .path("/")
-        .max_age(time::Duration::days(data.env.access_token_max_age))
-        .same_site(SameSite::Lax)
-        .http_only(true);
+    .path("/")
+    .max_age(time::Duration::days(data.env.access_token_max_age))
+    .same_site(SameSite::Lax)
+    .http_only(true);
 
     let refresh_cookie = Cookie::build((
         "refresh_token",
         refresh_token_details.token.unwrap_or_default(),
     ))
-        .path("/")
-        .max_age(time::Duration::minutes(data.env.refresh_token_max_age * 60))
-        .same_site(SameSite::Lax)
-        .http_only(true);
+    .path("/")
+    .max_age(time::Duration::minutes(data.env.refresh_token_max_age * 60))
+    .same_site(SameSite::Lax)
+    .http_only(true);
 
     let logged_in_cookie = Cookie::build(("logged_in", "true"))
         .path("/")
@@ -204,10 +206,8 @@ pub async fn login_user_handler(
         .same_site(SameSite::Lax)
         .http_only(false);
 
-    let mut response = Response::new(
-        json!({"status": "success", "message": "Login successful"})
-            .to_string(),
-    );
+    let mut response =
+        Response::new(json!({"status": "success", "message": "Login successful"}).to_string());
     let mut headers = HeaderMap::new();
     headers.append(
         header::SET_COOKIE,
@@ -225,7 +225,6 @@ pub async fn login_user_handler(
     response.headers_mut().extend(headers);
     Ok(response)
 }
-
 
 pub async fn logout_user_handler(
     cookie_jar: CookieJar,
@@ -246,8 +245,7 @@ pub async fn logout_user_handler(
         })?;
 
     let refresh_token_details =
-        match verify_jwt_token(data.env.refresh_token_public_key.to_owned(), &refresh_token)
-        {
+        match verify_jwt_token(data.env.refresh_token_public_key.to_owned(), &refresh_token) {
             Ok(token_details) => token_details,
             Err(e) => {
                 let error_response = ErrorResponse {
@@ -319,10 +317,6 @@ pub async fn logout_user_handler(
     response.headers_mut().extend(headers);
     Ok(response)
 }
-
-
-
-
 
 fn generate_token(
     user_id: uuid::Uuid,

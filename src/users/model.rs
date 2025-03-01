@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use strum::Display;
 
-#[derive(Debug, Clone, Display, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Display, Serialize, Deserialize, sqlx::Type, PartialEq)]
 #[sqlx(type_name = "user_role", rename_all = "lowercase")]
 pub enum UserRole {
     #[sqlx(rename = "пользователь")]
@@ -27,6 +27,7 @@ pub struct User {
     pub age: i32,
     pub email: String,
     pub password: String,
+    pub biography: Option<String>,
     pub file: String,
     pub verified: bool,
     pub role: UserRole,

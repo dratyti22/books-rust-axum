@@ -111,6 +111,7 @@ pub async fn auth(
         age,
         email,
         password,
+        biography,
         file,
         verified,
         role as "role: UserRole",
