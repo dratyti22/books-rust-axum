@@ -174,6 +174,7 @@ pub async fn login_user_handler(
         data.env.refresh_token_max_age,
         data.env.refresh_token_private_key.to_owned(),
     )?;
+
     save_token_data_to_redis(&data, &access_token_details, data.env.access_token_max_age).await?;
     save_token_data_to_redis(
         &data,

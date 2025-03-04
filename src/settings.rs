@@ -15,7 +15,6 @@ pub struct Settings {
     pub refresh_token_max_age: i64,
 }
 
-
 impl Settings {
     pub fn init() -> Self {
         let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");

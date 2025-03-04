@@ -1,18 +1,19 @@
+mod books;
+mod middleware;
 mod route;
+mod service;
 mod settings;
 mod users;
-mod middleware;
-mod books;
 
 use crate::route::init_router;
 use crate::settings::Settings;
 use axum::http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE};
 use axum::http::{HeaderValue, Method};
 use dotenv::dotenv;
+use redis::Client;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
-use redis::Client;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
@@ -65,9 +66,7 @@ async fn main() {
     }))
     .layer(cors);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
     info!("🚀 Server started at {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }

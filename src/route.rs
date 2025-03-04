@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use axum::Router;
-use crate::AppState;
 use crate::books::route::books_routers;
 use crate::users::route::user_routes;
+use crate::AppState;
+use axum::Router;
+use std::sync::Arc;
 
 pub fn init_router(app_state: Arc<AppState>) -> Router {
     Router::new()

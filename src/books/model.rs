@@ -14,7 +14,7 @@ pub struct Genres {
 pub struct Books {
     pub id: uuid::Uuid,
     pub title: String,
-    pub description: String,
+    pub description: Option<String>,
     pub author_id: uuid::Uuid,
     pub genre_id: uuid::Uuid,
     pub publication_year: i32,

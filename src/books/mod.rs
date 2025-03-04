@@ -1,6 +1,6 @@
-mod model;
-mod genres_handler;
-mod schema;
-mod response;
 mod book_handler;
+mod genres_handler;
+mod model;
+mod response;
 pub mod route;
+mod schema;
