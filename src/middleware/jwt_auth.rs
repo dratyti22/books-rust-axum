@@ -18,13 +18,11 @@ pub struct JWTAuthMiddleware {
     pub user: User,
     pub accesses_token_uuid: uuid::Uuid,
 }
-
-pub async fn auth(
+pub async fn examination_auth(
     cookie_jar: CookieJar,
     State(data): State<Arc<AppState>>,
     mut req: Request<Body>,
-    next: Next,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Request<Body>, (StatusCode, Json<ErrorResponse>)> {
     let access_token = cookie_jar
         .get("access_token")
         .map(|cookie| cookie.value().to_string())
@@ -144,5 +142,76 @@ pub async fn auth(
         user,
         accesses_token_uuid: access_token_uuid,
     });
-    Ok(next.run(req).await)
+    Ok(req)
+}
+
+pub async fn auth(
+    cookie_jar: CookieJar,
+    State(data): State<Arc<AppState>>,
+    req: Request<Body>,
+    next: Next,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let auth_result = examination_auth(cookie_jar, State(data), req).await;
+    match auth_result {
+        Ok(response) => Ok(next.run(response).await),
+        Err(err) => Err(err),
+    }
+}
+
+pub async fn auth_roles(
+    cookie_jar: CookieJar,
+    State(data): State<Arc<AppState>>,
+    req: Request<Body>,
+    next: Next,
+    allowed_roles: Vec<UserRole>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let auth_result = examination_auth(cookie_jar, State(data), req).await;
+
+    match auth_result {
+        Ok(req) => {
+            if let Some(auth_middleware) = req.extensions().get::<JWTAuthMiddleware>().cloned() {
+                if allowed_roles.contains(&auth_middleware.user.role) {
+                    Ok(next.run(req).await)
+                } else {
+                    let json_error = ErrorResponse {
+                        data: None,
+                        message: "You do not have permission to access this resource".to_string(),
+                    };
+                    Err((StatusCode::FORBIDDEN, Json(json_error)))
+                }
+            } else {
+                let json_error = ErrorResponse {
+                    data: None,
+                    message: "Authentication failed".to_string(),
+                };
+                Err((StatusCode::UNAUTHORIZED, Json(json_error)))
+            }
+        }
+        Err(err) => Err(err),
+    }
+}
+
+pub async fn auth_admin(
+    cookie_jar: CookieJar,
+    State(data): State<Arc<AppState>>,
+    req: Request<Body>,
+    next: Next,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    auth_roles(cookie_jar, State(data), req, next, vec![UserRole::Admin]).await
+}
+
+pub async fn auth_author_worker_admin(
+    cookie_jar: CookieJar,
+    State(data): State<Arc<AppState>>,
+    req: Request<Body>,
+    next: Next,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    auth_roles(
+        cookie_jar,
+        State(data),
+        req,
+        next,
+        vec![UserRole::Author, UserRole::Worker, UserRole::Admin],
+    )
+    .await
 }
