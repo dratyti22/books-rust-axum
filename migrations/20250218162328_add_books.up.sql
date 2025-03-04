@@ -9,18 +9,18 @@ CREATE TABLE genres (
 );
 
 CREATE TABLE books (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
     title VARCHAR(250) NOT NULL,
     description TEXT,
-    author_id UUID REFERENCES users(id),
-    genre_id UUID REFERENCES genres(id),
-    publication_year SMALLINT,
-    isbn VARCHAR(13) UNIQUE,
-    cover_image VARCHAR(255),
-    price NUMERIC(8, 2) CHECK (price >= 0.00), -- 6 цифр до точки, 2 после
-    discount NUMERIC(8, 2) CHECK (discount >= 0.00 AND discount <= 100.00), -- скидка в процентах
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    author_id UUID REFERENCES users(id) NOT NULL,
+    genre_id UUID REFERENCES genres(id) NOT NULL,
+    publication_year SMALLINT NOT NULL,
+    isbn VARCHAR(13) UNIQUE NOT NULL,
+    cover_image VARCHAR(255) NOT NULL  DEFAULT 'uploads/books/default.jpg',
+    price NUMERIC(8, 2) CHECK (price >= 0.00) NOT NULL, -- 6 цифр до точки, 2 после
+    discount NUMERIC(8, 2) CHECK (discount >= 0.00 AND discount <= 100.00) NOT NULL DEFAULT 0, -- скидка в процентах
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
 
 
