@@ -1,14 +1,9 @@
 use crate::users::model::{User, UserRole};
 use rust_decimal::Decimal;
 use serde::Serialize;
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub data: Option<String>,
-    pub message: String,
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserResponse {
     pub id: uuid::Uuid,
     pub first_name: String,
@@ -41,8 +36,8 @@ impl UserResponse {
             role: user.role.to_owned(),
             balance: user.balance,
             rating: user.rating,
-            created_at: user.created_at.unwrap_or_else(|| chrono::Utc::now()),
-            updated_at: user.created_at.unwrap_or_else(|| chrono::Utc::now()),
+            created_at: user.created_at,
+            updated_at: user.updated_at,
         }
     }
 }

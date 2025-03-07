@@ -1,5 +1,5 @@
+use crate::service::response_server::ErrorResponse;
 use crate::users::model::{User, UserRole};
-use crate::users::response::ErrorResponse;
 use crate::users::token::verify_jwt_token;
 use crate::AppState;
 use axum::body::Body;
@@ -30,18 +30,13 @@ pub async fn examination_auth(
             req.headers()
                 .get(header::AUTHORIZATION)
                 .and_then(|auth_header| auth_header.to_str().ok())
-                .and_then(|auth_value| {
-                    if auth_value.starts_with("Bearer ") {
-                        Some(auth_value[7..].to_owned())
-                    } else {
-                        None
-                    }
-                })
+                .and_then(|auth_value| auth_value.strip_prefix("Bearer "))
+                .map(|token| token.to_owned())
         });
 
     let access_token = access_token.ok_or_else(|| {
         let json_error = ErrorResponse {
-            data: None,
+            error: "".to_string(),
             message: "You are not logged in, please provide token".to_string(),
         };
         (StatusCode::UNAUTHORIZED, Json(json_error))
@@ -52,8 +47,8 @@ pub async fn examination_auth(
             Ok(token_details) => token_details,
             Err(e) => {
                 let error_response = ErrorResponse {
-                    data: None,
-                    message: format!("{:?}", e),
+                    error: format!("{:?}", e),
+                    message: "TokenDetails invalid".to_string(),
                 };
                 return Err((StatusCode::UNAUTHORIZED, Json(error_response)));
             }
@@ -62,7 +57,7 @@ pub async fn examination_auth(
     let access_token_uuid = uuid::Uuid::parse_str(&access_token_details.token_uuid.to_string())
         .map_err(|_| {
             let error_response = ErrorResponse {
-                data: None,
+                error: "".to_string(),
                 message: "Invalid token".to_string(),
             };
             (StatusCode::UNAUTHORIZED, Json(error_response))
@@ -74,8 +69,8 @@ pub async fn examination_auth(
         .await
         .map_err(|e| {
             let error_response = ErrorResponse {
-                data: None,
-                message: format!("Redis error: {}", e),
+                error: format!("Redis error: {}", e),
+                message: "Redis Error".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
         })?;
@@ -85,7 +80,7 @@ pub async fn examination_auth(
         .await
         .map_err(|_| {
             let error_response = ErrorResponse {
-                data: None,
+                error: "".to_string(),
                 message: "Token is invalid or session has expired".to_string(),
             };
             (StatusCode::UNAUTHORIZED, Json(error_response))
@@ -93,7 +88,7 @@ pub async fn examination_auth(
 
     let user_id = uuid::Uuid::parse_str(&redis_token_user_id).map_err(|_| {
         let json_error = ErrorResponse {
-            data: None,
+            error: "".to_string(),
             message: "Invalid token".to_string(),
         };
         (StatusCode::UNAUTHORIZED, Json(json_error))
@@ -125,15 +120,15 @@ pub async fn examination_auth(
     .await
     .map_err(|e| {
         let json_error = ErrorResponse {
-            data: None,
-            message: format!("Error fetching user from database: {}", e),
+            error: format!("Error fetching user from database: {}", e),
+            message: "Error database fetching user".to_string(),
         };
         (StatusCode::INTERNAL_SERVER_ERROR, Json(json_error))
     })?;
 
     let user = user.ok_or_else(|| {
         let json_error = ErrorResponse {
-            data: None,
+            error: "".to_string(),
             message: "The user belonging to this token no longer exists".to_string(),
         };
         (StatusCode::UNAUTHORIZED, Json(json_error))
@@ -174,14 +169,14 @@ pub async fn auth_roles(
                     Ok(next.run(req).await)
                 } else {
                     let json_error = ErrorResponse {
-                        data: None,
+                        error: "".to_string(),
                         message: "You do not have permission to access this resource".to_string(),
                     };
                     Err((StatusCode::FORBIDDEN, Json(json_error)))
                 }
             } else {
                 let json_error = ErrorResponse {
-                    data: None,
+                    error: "".to_string(),
                     message: "Authentication failed".to_string(),
                 };
                 Err((StatusCode::UNAUTHORIZED, Json(json_error)))

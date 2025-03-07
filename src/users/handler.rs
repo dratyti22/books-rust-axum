@@ -1,6 +1,7 @@
 use crate::middleware::jwt_auth::JWTAuthMiddleware;
+use crate::service::response_server::{APIResult, ErrorResponse, SuccessResponse};
 use crate::users::model::{User, UserRole};
-use crate::users::response::{ErrorResponse, UserResponse};
+use crate::users::response::UserResponse;
 use crate::users::schema::{LoginUserSchema, RegisterUserSchema};
 use crate::users::token::{generate_jwt_token, verify_jwt_token, TokenDetails};
 use crate::AppState;
@@ -9,22 +10,32 @@ use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::extract::State;
 use axum::http::{header, HeaderMap, Response, StatusCode};
-use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
 use redis::AsyncCommands;
-use serde_json::json;
 use std::sync::Arc;
 use validator::Validate;
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/register/",
+    request_body = RegisterUserSchema,
+    responses(
+        (status = 201, description = "Успешно создано", body = UserResponse),
+        (status = 400, description = "Ошибка валидации данных", body = ErrorResponse),
+        (status = 409, description = "Ошибка такие данные уже есть", body = ErrorResponse),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    tag = "Users"
+)]
 pub async fn register_user_handler(
     State(data): State<Arc<AppState>>,
     Json(body): Json<RegisterUserSchema>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+) -> APIResult<UserResponse> {
     if body.validate().is_err() {
         let error = ErrorResponse {
-            data: None,
+            error: "Invalid input data".to_string(),
             message: "Invalid input data".to_string(),
         };
         return Err((StatusCode::BAD_REQUEST, Json(error)));
@@ -37,14 +48,14 @@ pub async fn register_user_handler(
             .await
             .map_err(|e| {
                 let error_response = ErrorResponse {
-                    data: Some(format!("Database error: {}", e)),
+                    error: format!("Database error: {}", e),
                     message: "Request failed".to_string(),
                 };
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
             })?;
     if let Some(true) = user_exists {
         let error_response = ErrorResponse {
-            data: None,
+            error: "".to_string(),
             message: "Email already registered".to_string(),
         };
         return Err((StatusCode::CONFLICT, Json(error_response)));
@@ -56,7 +67,7 @@ pub async fn register_user_handler(
         .hash_password(body.password.as_bytes(), &salt)
         .map_err(|e| {
             let error_response = ErrorResponse {
-                data: Some(format!("Error while hashing password: {}", e)),
+                error: format!("Error while hashing password: {}", e),
                 message: "Password hashing failed".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
@@ -81,27 +92,39 @@ pub async fn register_user_handler(
         .await
         .map_err(|e| {
             let error_response = ErrorResponse {
-                data: None,
-                message: format!("Database error: {}", e),
+                error: format!("Database error: {}", e),
+                message: "Error when adding to the database record".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
         })?;
 
-    let response = json!({
-        "data": json!({"user": UserResponse::new(&user)}),
-        "message": "Registration successful".to_string(),
-    });
+    let response = SuccessResponse {
+        data: UserResponse::new(&user),
+        message: "Registration successful".to_string(),
+    };
 
     Ok((StatusCode::CREATED, Json(response)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/login/",
+    request_body = LoginUserSchema,
+    responses(
+        (status = 200, description = "Успешно авторизирован", body = UserResponse),
+        (status = 400, description = "Ошибка валидации данных или ошибка хеширования пароля", body = ErrorResponse),
+        (status = 409, description = "Ошибка такие данные уже есть", body = ErrorResponse),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    tag = "Users"
+)]
 pub async fn login_user_handler(
     State(data): State<Arc<AppState>>,
     Json(body): Json<LoginUserSchema>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+) -> APIResult<String> {
     if body.validate().is_err() {
         let error = ErrorResponse {
-            data: None,
+            error: "".to_string(),
             message: "Invalid input data".to_string(),
         };
         return Err((StatusCode::BAD_REQUEST, Json(error)));
@@ -135,14 +158,14 @@ pub async fn login_user_handler(
     .await
     .map_err(|e| {
         let error_response = ErrorResponse {
-            data: Some(format!("Database error: {}", e)),
+            error: format!("Database error: {}", e),
             message: "Request failed".to_string(),
         };
         (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
     })?
     .ok_or_else(|| {
         let error_response = ErrorResponse {
-            data: None,
+            error: "".to_string(),
             message: "Password hashing failed".to_string(),
         };
         (StatusCode::BAD_REQUEST, Json(error_response))
@@ -150,14 +173,13 @@ pub async fn login_user_handler(
 
     let valid_password = match PasswordHash::new(&user.password) {
         Ok(hash) => Argon2::default()
-            .verify_password(body.password.as_bytes(), &hash)
-            .map_or(false, |_| true),
+            .verify_password(body.password.as_bytes(), &hash).is_ok(),
         Err(_) => false,
     };
 
     if !valid_password {
         let error_response = ErrorResponse {
-            data: None,
+            error: "".to_string(),
             message: "Invalid email or password".to_string(),
         };
         return Err((StatusCode::BAD_REQUEST, Json(error_response)));
@@ -207,8 +229,12 @@ pub async fn login_user_handler(
         .same_site(SameSite::Lax)
         .http_only(false);
 
-    let mut response =
-        Response::new(json!({"status": "success", "message": "Login successful"}).to_string());
+    let json_response = SuccessResponse {
+        data: "success".to_string(),
+        message: "Login successful".to_string(),
+    };
+
+    let mut response = Response::new(json_response.to_string());
     let mut headers = HeaderMap::new();
     headers.append(
         header::SET_COOKIE,
@@ -224,14 +250,28 @@ pub async fn login_user_handler(
     );
 
     response.headers_mut().extend(headers);
-    Ok(response)
+    Ok((StatusCode::OK, Json(json_response)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/logout/",
+    responses(
+        (status = 200, description = "Успешно вышли", body = String),
+        (status = 403, description = "Ошибка авторизации", body = ErrorResponse),
+        (status = 401, description = "Ошибка проверка токена", body = ErrorResponse),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    security(
+        ("Bearer" = ["user"])
+    ),
+    tag = "Users"
+)]
 pub async fn logout_user_handler(
     cookie_jar: CookieJar,
     Extension(auth_guard): Extension<JWTAuthMiddleware>,
     State(data): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+) -> APIResult<String> {
     let message = "Token is invalid or session has expired".to_string();
 
     let refresh_token = cookie_jar
@@ -239,8 +279,8 @@ pub async fn logout_user_handler(
         .map(|cookie| cookie.value().to_string())
         .ok_or_else(|| {
             let error_response = ErrorResponse {
-                data: None,
-                message: message,
+                error: "".to_string(),
+                message,
             };
             (StatusCode::FORBIDDEN, Json(error_response))
         })?;
@@ -250,8 +290,8 @@ pub async fn logout_user_handler(
             Ok(token_details) => token_details,
             Err(e) => {
                 let error_response = ErrorResponse {
-                    data: None,
-                    message: format!("{:?}", e),
+                    error: format!("{:?}", e),
+                    message: "Error verifying token".to_string(),
                 };
                 return Err((StatusCode::UNAUTHORIZED, Json(error_response)));
             }
@@ -263,22 +303,22 @@ pub async fn logout_user_handler(
         .await
         .map_err(|e| {
             let error_response = ErrorResponse {
-                data: None,
-                message: format!("Redis error: {}", e),
+                error: format!("Redis error: {}", e),
+                message: "Redis error".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
         })?;
 
     redis_client
-        .del(&[
+        .del::<_, ()>(&[
             refresh_token_details.token_uuid.to_string(),
             auth_guard.accesses_token_uuid.to_string(),
         ])
         .await
         .map_err(|e| {
             let error_response = ErrorResponse {
-                data: None,
-                message: format!("{:?}", e),
+                error: format!("Redis Error 2: {:?}", e),
+                message: "Redis Error".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
         })?;
@@ -314,9 +354,14 @@ pub async fn logout_user_handler(
         logged_in_cookie.to_string().parse().unwrap(),
     );
 
-    let mut response = Response::new(json!({"status": "success"}).to_string());
+    let response_success = SuccessResponse {
+        data: "success".to_string(),
+        message: "Logout successful".to_string(),
+    };
+
+    let mut response = Response::new(response_success.to_string());
     response.headers_mut().extend(headers);
-    Ok(response)
+    Ok((StatusCode::OK, Json(response_success)))
 }
 
 fn generate_token(
@@ -326,7 +371,7 @@ fn generate_token(
 ) -> Result<TokenDetails, (StatusCode, Json<ErrorResponse>)> {
     generate_jwt_token(user_id, max_age, private_key).map_err(|e| {
         let error_response = ErrorResponse {
-            data: Some(format!("error generating token: {}", e)),
+            error: format!("error generating token: {}", e),
             message: "Error token".to_string(),
         };
         (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
@@ -344,13 +389,13 @@ async fn save_token_data_to_redis(
         .await
         .map_err(|e| {
             let error_response = ErrorResponse {
-                data: None,
-                message: format!("Redis error: {}", e),
+                error: format!("Redis error Save Token: {}", e),
+                message: "Redis error".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
         })?;
     redis_client
-        .set_ex(
+        .set_ex::<_, _, ()>(
             token_details.token_uuid.to_string(),
             token_details.user_id.to_string(),
             max_age as u64,
@@ -358,8 +403,8 @@ async fn save_token_data_to_redis(
         .await
         .map_err(|e| {
             let error_response = ErrorResponse {
-                data: None,
-                message: format!("Redis error: {}", e),
+                error: format!("Redis error Save Token 2: {}", e),
+                message: "Redis error".to_string(),
             };
             (StatusCode::UNPROCESSABLE_ENTITY, Json(error_response))
         })?;

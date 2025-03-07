@@ -1,8 +1,9 @@
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use validator::Validate;
 
-#[derive(Debug, Validate, Deserialize)]
+#[derive(Debug, Validate, Deserialize, ToSchema)]
 pub struct GenresSchema {
     #[validate(length(min = 1))]
     pub name: String,
@@ -10,7 +11,7 @@ pub struct GenresSchema {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Validate, Deserialize)]
+#[derive(Debug, Validate, Deserialize, ToSchema)]
 pub struct BookSchema {
     #[validate(length(min = 1, message = "Title is required"))]
     pub title: String,
@@ -23,10 +24,9 @@ pub struct BookSchema {
     pub cover_image: String,
 }
 
-
-#[derive(Debug, Validate, Deserialize)]
+#[derive(Debug, Validate, Deserialize, ToSchema)]
 pub struct BookUpdateSchema {
-    #[validate(length(min=1))]
+    #[validate(length(min = 1))]
     pub title: Option<String>,
     pub description: Option<String>,
     pub cover_image: Option<String>,

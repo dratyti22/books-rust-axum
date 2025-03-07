@@ -1,3 +1,4 @@
+mod api_doc;
 mod books;
 mod middleware;
 mod route;

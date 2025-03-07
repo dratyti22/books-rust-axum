@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use strum::Display;
 
-#[derive(Debug, Clone, Display, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[derive(
+    Debug, Clone, Display, Serialize, Deserialize, sqlx::Type, PartialEq, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "user_role", rename_all = "lowercase")]
 pub enum UserRole {
     #[sqlx(rename = "пользователь")]
@@ -33,6 +35,6 @@ pub struct User {
     pub role: UserRole,
     pub balance: Decimal,
     pub rating: Decimal,
-    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }

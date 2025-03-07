@@ -7,12 +7,25 @@ use crate::AppState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::{Extension, Json};
-use axum_macros::debug_handler;
 use chrono::Datelike;
 use std::sync::Arc;
 use validator::Validate;
 
-#[debug_handler]
+#[utoipa::path(
+    post,
+    path = "/api/v1/book/create/",
+    request_body = BookSchema,
+    responses(
+        (status = 201, description = "Успешно создано", body = String),
+        (status = 400, description = "Ошибка валидации данных", body = ErrorResponse),
+        (status = 409, description = "Ошибка такие данные уже есть", body = ErrorResponse),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    security(
+        ("Bearer" = ["author","worker","admin"])
+    ),
+    tag = "Books"
+)]
 pub async fn create_book(
     State(data): State<Arc<AppState>>,
     Extension(user): Extension<JWTAuthMiddleware>,
@@ -54,7 +67,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id"#,
             return Err((StatusCode::CONFLICT, Json(e)));
         }
         let e = ErrorResponse {
-            error: format!("Database error: {}", e.to_string()),
+            error: format!("Database error: {}", e),
             message: "Error when adding".to_string(),
         };
         return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(e)));
@@ -67,6 +80,20 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id"#,
     Ok((StatusCode::CREATED, Json(result)))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/book/delete/{id}/",
+    request_body = BookSchema,
+    responses(
+        (status = 204, description = "Успешно удалено", body = String),
+        (status = 404, description = "Ошибка такой id не найден", body = ErrorResponse),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    security(
+        ("Bearer" = ["author","worker","admin"])
+    ),
+    tag = "Books"
+)]
 pub async fn delete_book(
     State(data): State<Arc<AppState>>,
     Path(id): Path<uuid::Uuid>,
@@ -76,7 +103,7 @@ pub async fn delete_book(
         .await
         .map_err(|e| {
             let e = ErrorResponse {
-                error: format!("Database error: {}", e.to_string()),
+                error: format!("Database error: {}", e),
                 message: "Error when deleting".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(e))
@@ -97,6 +124,21 @@ pub async fn delete_book(
     Ok((StatusCode::NO_CONTENT, Json(response)))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/book/update/{id}/",
+    request_body = BookUpdateSchema,
+    responses(
+        (status = 204, description = "Успешно изменено", body = Books),
+        (status = 400, description = "Ошибка валидации данных", body = ErrorResponse),
+        (status = 404, description = "Ошибка такой id не найден", body = ErrorResponse),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    security(
+        ("Bearer" = ["author","worker","admin"])
+    ),
+    tag = "Books"
+)]
 pub async fn update_book(
     Path(id): Path<uuid::Uuid>,
     State(data): State<Arc<AppState>>,
@@ -142,7 +184,7 @@ pub async fn update_book(
         }
         _ => {
             let e = ErrorResponse {
-                error: format!("Database error: {}", e.to_string()),
+                error: format!("Database error: {}", e),
                 message: "Error when updating book in database".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(e))
@@ -154,7 +196,7 @@ pub async fn update_book(
         .await
         .map_err(|e| {
             let e = ErrorResponse {
-                error: format!("Database error: {}", e.to_string()),
+                error: format!("Database error: {}", e),
                 message: "Error when fetching updated book from database".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(e))
@@ -168,13 +210,22 @@ pub async fn update_book(
     Ok((StatusCode::OK, Json(response)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/book",
+    responses(
+        (status = 200, description = "Список книг", body = Vec<BookResponse>),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    tag = "Books"
+)]
 pub async fn get_all_books(State(data): State<Arc<AppState>>) -> APIResult<Vec<BookResponse>> {
     let books_response = sqlx::query_as!(Books, "SELECT * FROM books")
         .fetch_all(&data.db)
         .await
         .map_err(|e| {
             let e = ErrorResponse {
-                error: format!("Database error: {}", e.to_string()),
+                error: format!("Database error: {}", e),
                 message: "Error when fetching all books from database".to_string(),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(e))
@@ -193,6 +244,16 @@ pub async fn get_all_books(State(data): State<Arc<AppState>>) -> APIResult<Vec<B
     Ok((StatusCode::OK, Json(response)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/book/{id}",
+    responses(
+        (status = 200, description = "Книга", body = BookResponse),
+        (status = 404, description = "Ошибка такой id не найден", body = ErrorResponse),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    tag = "Books"
+)]
 pub async fn get_one_book(
     Path(id): Path<uuid::Uuid>,
     State(data): State<Arc<AppState>>,
@@ -218,7 +279,7 @@ pub async fn get_one_book(
         }
         Err(e) => {
             let e = ErrorResponse {
-                error: format!("Database error: {}", e.to_string()),
+                error: format!("Database error: {}", e),
                 message: "Error when fetching book from database".to_string(),
             };
             Err((StatusCode::INTERNAL_SERVER_ERROR, Json(e)))

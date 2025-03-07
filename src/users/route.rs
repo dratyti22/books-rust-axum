@@ -4,7 +4,6 @@ use crate::AppState;
 use axum::routing::post;
 use axum::{middleware, Router};
 use std::sync::Arc;
-use tracing::info;
 
 pub fn user_routes(app_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()

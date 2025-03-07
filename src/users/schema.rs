@@ -1,7 +1,8 @@
 use serde::Deserialize;
+use utoipa::ToSchema;
 use validator::Validate;
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct RegisterUserSchema {
     #[validate(length(min = 2, max = 100))]
     pub first_name: String,
@@ -22,7 +23,7 @@ pub struct RegisterUserSchema {
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct LoginUserSchema {
     #[validate(email)]
     pub email: String,

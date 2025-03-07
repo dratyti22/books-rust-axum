@@ -4,22 +4,35 @@ use crate::service::response_server::{APIResult, ErrorResponse, SuccessResponse}
 use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use axum::Json;
-use serde_json::{json, Value};
 use std::sync::Arc;
 use validator::Validate;
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/book/genres/create/",
+    request_body = GenresSchema,
+    responses(
+        (status = 201, description = "Список жанров", body = Genres),
+        (status = 400, description = "Ошибка валидации данных", body = ErrorResponse),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    security(
+        ("Bearer" = ["admin"])
+    ),
+    tag = "Books genres"
+)]
 pub async fn create_genres(
     State(data): State<Arc<AppState>>,
     Json(body): Json<GenresSchema>,
-) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
+) -> APIResult<Genres> {
     if body.validate().is_err() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid input data"
-            })),
+            Json(ErrorResponse {
+                error: "Invalid input data".to_string(),
+                message: "Invalid input data".to_string(),
+            }),
         ));
     }
 
@@ -32,21 +45,30 @@ pub async fn create_genres(
     .fetch_one(&data.db)
     .await
     .map_err(|e| {
-        let error_response = json!({
-            "error": format!("Database error: {}", e),
-            "message": "Failed to create genre"
-        });
+        let error_response = ErrorResponse {
+            error: format!("Database error: {}", e),
+            message: "Failed to create genre".to_string(),
+        };
         (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
     })?;
 
-    let response = json!({
-        "data": genres,
-        "message": "Genre created successfully"
-    });
+    let response = SuccessResponse {
+        data: genres,
+        message: "Genre created successfully".to_string(),
+    };
 
-    Ok(Json(response))
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/book/genres",
+    responses(
+        (status = 200, description = "Список жанров", body = Vec<Genres>),
+        (status = 500, description = "Ошибка сервера", body = ErrorResponse)
+    ),
+    tag = "Books genres"
+)]
 pub async fn get_all_genres(State(data): State<Arc<AppState>>) -> APIResult<Vec<Genres>> {
     let genres = sqlx::query_as!(Genres, "SELECT * FROM genres")
         .fetch_all(&data.db)

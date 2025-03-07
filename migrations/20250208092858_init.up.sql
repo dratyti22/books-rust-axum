@@ -24,8 +24,8 @@ CREATE TABLE
             CHECK (balance >= 0.00 AND balance <= 100000.00),
         rating NUMERIC(4, 2) NOT NULL DEFAULT 0.00
             CHECK (rating >= 0.00 AND rating <= 100.00),
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
     );
 
 CREATE INDEX users_email_idx ON users (email);
