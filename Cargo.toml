@@ -1,14 +1,13 @@
 [package]
 name = "books"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 readme = "README.md"
 
 [dependencies]
 argon2 = "0.5.3"
 axum = "0.8.1"
 axum-extra = { version = "0.10.0", features = ["cookie"] }
-axum-macros = "0.5.0"
 base64 = "0.22.1"
 chrono = { version = "0.4.39", features = ["serde"] }
 dotenv = "0.15.0"
@@ -29,3 +28,15 @@ utoipa = { version = "5.3.1", features = ["axum_extras", "chrono", "decimal_floa
 utoipa-swagger-ui = { version = "9.0.0", features = ["axum"] }
 uuid = { version = "1.13.1", features = ["serde", "v4"] }
 validator = { version = "0.20.0", features = ["derive"] }
+
+[dev-dependencies]
+cookie = "0.18.1"
+assert2 = "0.3.15"
+axum-macros = "0.5.0"
+axum-test = "17.2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[profile.test]
+test-threads = 1

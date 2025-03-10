@@ -1,11 +1,11 @@
+use crate::AppState;
 use crate::books::book_handler::{
     create_book, delete_book, get_all_books, get_one_book, update_book,
 };
 use crate::books::genres_handler::{create_genres, get_all_genres};
 use crate::middleware::jwt_auth::{auth_admin, auth_author_worker_admin};
-use crate::AppState;
 use axum::routing::{delete, get, patch, post};
-use axum::{middleware, Router};
+use axum::{Router, middleware};
 use std::sync::Arc;
 
 pub fn genre_routers(app_state: Arc<AppState>) -> Router<Arc<AppState>> {

@@ -1,13 +1,13 @@
+use crate::AppState;
 use crate::service::response_server::ErrorResponse;
 use crate::users::model::{User, UserRole};
 use crate::users::token::verify_jwt_token;
-use crate::AppState;
+use axum::Json;
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{header, Request, StatusCode};
+use axum::http::{Request, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::IntoResponse;
-use axum::Json;
 use axum_extra::extract::CookieJar;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};

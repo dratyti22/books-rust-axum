@@ -1,8 +1,8 @@
+use crate::AppState;
 use crate::middleware::jwt_auth::auth;
 use crate::users::handler::{login_user_handler, logout_user_handler, register_user_handler};
-use crate::AppState;
 use axum::routing::post;
-use axum::{middleware, Router};
+use axum::{Router, middleware};
 use std::sync::Arc;
 
 pub fn user_routes(app_state: Arc<AppState>) -> Router<Arc<AppState>> {

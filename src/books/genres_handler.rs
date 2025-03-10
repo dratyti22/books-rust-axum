@@ -1,10 +1,10 @@
+use crate::AppState;
 use crate::books::model::Genres;
 use crate::books::schema::GenresSchema;
 use crate::service::response_server::{APIResult, ErrorResponse, SuccessResponse};
-use crate::AppState;
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use std::sync::Arc;
 use validator::Validate;
 

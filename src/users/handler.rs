@@ -1,18 +1,18 @@
+use crate::AppState;
 use crate::middleware::jwt_auth::JWTAuthMiddleware;
 use crate::service::response_server::{APIResult, ErrorResponse, SuccessResponse};
 use crate::users::model::{User, UserRole};
 use crate::users::response::UserResponse;
 use crate::users::schema::{LoginUserSchema, RegisterUserSchema};
-use crate::users::token::{generate_jwt_token, verify_jwt_token, TokenDetails};
-use crate::AppState;
-use argon2::password_hash::rand_core::OsRng;
+use crate::users::token::{TokenDetails, generate_jwt_token, verify_jwt_token};
 use argon2::password_hash::SaltString;
+use argon2::password_hash::rand_core::OsRng;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::extract::State;
-use axum::http::{header, HeaderMap, Response, StatusCode};
+use axum::http::{HeaderMap, Response, StatusCode, header};
 use axum::{Extension, Json};
-use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
+use axum_extra::extract::cookie::{Cookie, SameSite};
 use redis::AsyncCommands;
 use std::sync::Arc;
 use validator::Validate;
@@ -121,7 +121,7 @@ pub async fn register_user_handler(
 pub async fn login_user_handler(
     State(data): State<Arc<AppState>>,
     Json(body): Json<LoginUserSchema>,
-) -> APIResult<String> {
+) -> APIResult<serde_json::Value> {
     if body.validate().is_err() {
         let error = ErrorResponse {
             error: "".to_string(),
@@ -173,7 +173,8 @@ pub async fn login_user_handler(
 
     let valid_password = match PasswordHash::new(&user.password) {
         Ok(hash) => Argon2::default()
-            .verify_password(body.password.as_bytes(), &hash).is_ok(),
+            .verify_password(body.password.as_bytes(), &hash)
+            .is_ok(),
         Err(_) => false,
     };
 
@@ -216,7 +217,7 @@ pub async fn login_user_handler(
 
     let refresh_cookie = Cookie::build((
         "refresh_token",
-        refresh_token_details.token.unwrap_or_default(),
+        refresh_token_details.token.clone().unwrap_or_default(),
     ))
     .path("/")
     .max_age(time::Duration::minutes(data.env.refresh_token_max_age * 60))
@@ -229,8 +230,11 @@ pub async fn login_user_handler(
         .same_site(SameSite::Lax)
         .http_only(false);
 
+    let messages = serde_json::json!({"type_token":"Bearer".to_string(),"access_token":access_token_details.token.unwrap_or_default(),
+    "refresh_token": refresh_token_details.token.unwrap_or_default()});
+
     let json_response = SuccessResponse {
-        data: "success".to_string(),
+        data: messages,
         message: "Login successful".to_string(),
     };
 
