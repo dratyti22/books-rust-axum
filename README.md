@@ -2,6 +2,8 @@
 
 This project is designed to study Axum while writing something like a book library
 
+[Tasks](todo.md)
+
 ## Features
 
 - _openapi documentation_
