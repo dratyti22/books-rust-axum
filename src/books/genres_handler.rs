@@ -1,10 +1,11 @@
-use crate::AppState;
 use crate::books::model::Genres;
 use crate::books::schema::GenresSchema;
+use crate::service::get_or_set_cache;
 use crate::service::response_server::{APIResult, ErrorResponse, SuccessResponse};
-use axum::Json;
+use crate::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::Json;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -70,19 +71,25 @@ pub async fn create_genres(
     tag = "Books genres"
 )]
 pub async fn get_all_genres(State(data): State<Arc<AppState>>) -> APIResult<Vec<Genres>> {
-    let genres = sqlx::query_as!(Genres, "SELECT * FROM genres")
-        .fetch_all(&data.db)
-        .await
-        .map_err(|e| {
-            let error_response = ErrorResponse {
-                error: format!("Database error: {}", e),
-                message: "Failed to fetch all genres".to_string(),
-            };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
-        })?;
+    let redis_key = "genres-all";
+    let result = get_or_set_cache(&data.env.redis_url, redis_key, || async {
+        let genres: Vec<Genres> = sqlx::query_as!(Genres, "SELECT * FROM genres")
+            .fetch_all(&data.db)
+            .await
+            .map_err(|e| {
+                let error_response = ErrorResponse {
+                    error: format!("Database error: {}", e),
+                    message: "Failed to fetch all genres".to_string(),
+                };
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
+            }).unwrap();
+        Ok(genres)
+    })
+    .await
+    .unwrap();
 
     let response = SuccessResponse {
-        data: genres,
+        data: result,
         message: "Genres fetched successfully".to_string(),
     };
 

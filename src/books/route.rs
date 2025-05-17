@@ -24,8 +24,8 @@ pub fn genre_routers(app_state: Arc<AppState>) -> Router<Arc<AppState>> {
 pub fn books_routers(app_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .nest("/genres", genre_routers(app_state.clone()))
-        .route("/{id}", get(get_one_book))
         .route("/", get(get_all_books))
+        .route("/{id}", get(get_one_book))
         .route(
             "/create/",
             post(create_book).route_layer(middleware::from_fn_with_state(

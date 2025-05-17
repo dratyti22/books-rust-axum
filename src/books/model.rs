@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, FromRow, ToSchema, Clone)]
 pub struct Genres {
     pub id: uuid::Uuid,
     pub name: String,
@@ -12,7 +12,7 @@ pub struct Genres {
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, FromRow, ToSchema, Clone)]
 pub struct Books {
     pub id: uuid::Uuid,
     pub title: String,

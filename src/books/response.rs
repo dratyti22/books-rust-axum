@@ -1,9 +1,9 @@
 use crate::books::model::Books;
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, Clone, Deserialize)]
 pub struct BookResponse {
     pub id: uuid::Uuid,
     pub title: String,

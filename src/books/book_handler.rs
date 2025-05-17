@@ -1,16 +1,17 @@
-use crate::AppState;
 use crate::books::model::Books;
 use crate::books::response::BookResponse;
 use crate::books::schema::{BookSchema, BookUpdateSchema};
 use crate::middleware::jwt_auth::JWTAuthMiddleware;
+use crate::service::get_or_set_cache;
 use crate::service::response_server::{APIResult, ErrorResponse, SuccessResponse};
+use crate::AppState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::{Extension, Json};
 use chrono::Datelike;
+use sqlx::Error;
 use std::sync::Arc;
 use validator::Validate;
-
 #[utoipa::path(
     post,
     path = "/api/v1/book/create/",
@@ -220,24 +221,31 @@ pub async fn update_book(
     tag = "Books"
 )]
 pub async fn get_all_books(State(data): State<Arc<AppState>>) -> APIResult<Vec<BookResponse>> {
-    let books_response = sqlx::query_as!(Books, "SELECT * FROM books")
-        .fetch_all(&data.db)
-        .await
-        .map_err(|e| {
-            let e = ErrorResponse {
-                error: format!("Database error: {}", e),
-                message: "Error when fetching all books from database".to_string(),
-            };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(e))
-        })?;
+    let redis_key = "books-all";
+    let result = get_or_set_cache(&data.env.redis_url, redis_key, || async {
+        let books_response = sqlx::query_as!(Books, "SELECT * FROM books")
+            .fetch_all(&data.db)
+            .await
+            .map_err(|e| {
+                let e = ErrorResponse {
+                    error: format!("Database error: {}", e),
+                    message: "Error when fetching all books from database".to_string(),
+                };
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(e))
+            })
+            .unwrap();
 
-    let response_books: Vec<BookResponse> = books_response
-        .into_iter()
-        .map(BookResponse::from_book)
-        .collect();
+        let response_books: Vec<BookResponse> = books_response
+            .into_iter()
+            .map(BookResponse::from_book)
+            .collect();
+        Ok(response_books)
+    })
+    .await
+    .unwrap();
 
     let response = SuccessResponse {
-        data: response_books,
+        data: result,
         message: "Books fetched successfully".to_string(),
     };
 
@@ -258,11 +266,29 @@ pub async fn get_one_book(
     Path(id): Path<uuid::Uuid>,
     State(data): State<Arc<AppState>>,
 ) -> APIResult<BookResponse> {
-    let query = sqlx::query_as!(Books, r#"SELECT * FROM books WHERE id = $1"#, id)
-        .fetch_one(&data.db)
-        .await;
+    let redis_key = format!("book-{}", id);
 
-    match query {
+    let result = get_or_set_cache(&data.env.redis_url, redis_key.as_str(), || async {
+        let query: Result<Books, Error> =
+            sqlx::query_as!(Books, r#"SELECT * FROM books WHERE id = $1"#, id)
+                .fetch_one(&data.db)
+                .await;
+        match query {
+            Ok(book) => Ok(book),
+            Err(Error::RowNotFound) => Err(redis::RedisError::from((
+                redis::ErrorKind::ResponseError,
+                "Book not found",
+            ))),
+            Err(e) => Err(redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Database error",
+                e.to_string(),
+            ))),
+        }
+    })
+    .await;
+
+    match result {
         Ok(book) => {
             let response = SuccessResponse {
                 data: BookResponse::from_book(book),
@@ -270,19 +296,20 @@ pub async fn get_one_book(
             };
             Ok((StatusCode::OK, Json(response)))
         }
-        Err(sqlx::Error::RowNotFound) => {
-            let e = ErrorResponse {
-                error: "".to_string(),
-                message: "Book not found".to_string(),
-            };
-            Err((StatusCode::NOT_FOUND, Json(e)))
-        }
         Err(e) => {
-            let e = ErrorResponse {
-                error: format!("Database error: {}", e),
-                message: "Error when fetching book from database".to_string(),
-            };
-            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(e)))
+            if e.to_string().contains("Book not found") {
+                let error_response = ErrorResponse {
+                    error: "".to_string(),
+                    message: "Book not found".to_string(),
+                };
+                Err((StatusCode::NOT_FOUND, Json(error_response)))
+            } else {
+                let error_response = ErrorResponse {
+                    error: format!("Error: {}", e),
+                    message: "Error when fetching book".to_string(),
+                };
+                Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)))
+            }
         }
     }
 }
